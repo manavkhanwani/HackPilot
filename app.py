@@ -4,19 +4,88 @@ from __future__ import annotations
 
 import streamlit as st
 
+from hackpilot.ai_provider import (
+    OLLAMA_DEFAULT_MODELS,
+    ConfigurationError,
+    Provider,
+)
 from hackpilot.features.feasibility import analyze_feasibility
 from hackpilot.features.idea_generator import generate_ideas
 from hackpilot.features.pitch import generate_pitch
 from hackpilot.features.planner import build_plan
 from hackpilot.features.readme_gen import generate_readme
+from hackpilot.language import LANGUAGE_OPTIONS, Language
 from hackpilot.models import HackathonContext, ProjectIdea
 
 st.set_page_config(page_title="HackPilot", page_icon="🚀", layout="wide")
 st.title("🚀 HackPilot")
 st.caption("Your AI-powered hackathon copilot.")
 
-# ── Sidebar: hackathon context ────────────────────────────────────────────────
+# ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
+    # ── Language selector ──────────────────────────────────────────────────
+    st.header("🌐 Language")
+    selected_lang_str: str = st.selectbox(
+        "Output language",
+        LANGUAGE_OPTIONS,
+        index=0,
+        help="All AI-generated content will be in this language.",
+    )
+    language = Language(selected_lang_str)
+
+    st.divider()
+
+    # ── AI Provider selector ───────────────────────────────────────────────
+    st.header("🤖 AI Provider")
+    provider_options = [p.value for p in Provider]
+    selected_provider_str: str = st.selectbox(
+        "Provider",
+        provider_options,
+        index=0,
+        help="Gemini uses Google Cloud; Ollama runs models locally.",
+    )
+    provider = Provider(selected_provider_str)
+
+    gemini_api_key: str = ""
+    ollama_model: str = OLLAMA_DEFAULT_MODELS[0]
+
+    if provider is Provider.GEMINI:
+        # ── BYOK: Bring Your Own Key ───────────────────────────────────────
+        byok = st.text_input(
+            "Gemini API Key (optional)",
+            type="password",
+            placeholder="Leave blank to use secrets",
+            help=(
+                "Paste your own Gemini key here. "
+                "If blank, the key from Streamlit secrets is used. "
+                "Your key is never logged or stored."
+            ),
+        )
+        gemini_api_key = byok  # may be empty string; resolution happens in ai_provider
+
+    else:  # Ollama
+        available_models = OLLAMA_DEFAULT_MODELS.copy()
+        custom_model = st.text_input(
+            "Custom Ollama model (optional)",
+            placeholder="e.g. codellama:13b",
+            help="Leave blank to pick from the list below.",
+        )
+        if custom_model.strip():
+            available_models = [custom_model.strip()] + available_models
+
+        ollama_model = st.selectbox(
+            "Ollama model",
+            available_models,
+            index=0,
+        )
+        st.caption(
+            "Make sure Ollama is running locally: `ollama serve`  \n"
+            f"Model in use: `{ollama_model}`"
+        )
+
+    st.divider()
+
+    # ── Hackathon context ──────────────────────────────────────────────────
     st.header("⚙️ Hackathon Context")
     theme = st.text_input("Theme", placeholder="e.g. Sustainable Cities")
     team_size = st.number_input("Team size", min_value=1, max_value=5, value=2, step=1)
@@ -34,6 +103,30 @@ with st.sidebar:
         preferred_tech=preferred_tech,
     )
 
+
+# ── Shared kwargs forwarded to every feature call ─────────────────────────────
+_ai_kwargs: dict = dict(
+    provider=provider,
+    gemini_api_key=gemini_api_key,
+    ollama_model=ollama_model,
+    language=language,
+)
+
+
+def _handle_config_error(exc: Exception) -> None:
+    """Display a friendly error for configuration issues and stop execution."""
+    if isinstance(exc, ConfigurationError):
+        st.error(str(exc))
+        if provider is Provider.GEMINI:
+            st.info(
+                "💡 Add `GEMINI_API_KEY` to your Streamlit secrets, "
+                "or enter a key in the sidebar."
+            )
+    else:
+        st.error(f"Unexpected error: {exc}")
+    st.stop()
+
+
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 tabs = st.tabs(["💡 Ideas", "🔍 Feasibility", "🗓 Plan", "🎤 Pitch", "📄 README"])
 
@@ -45,22 +138,14 @@ with tabs[0]:
         st.warning("Enter a hackathon theme in the sidebar to get started.")
     else:
         if st.button("Generate Ideas", type="primary", key="gen_ideas"):
-            try:
-                api_key: str = st.secrets["GEMINI_API_KEY"]
-            except KeyError:
-                st.error("GEMINI_API_KEY not found in Streamlit secrets.")
-                st.stop()
-
-            with st.spinner("Generating ideas with Gemini…"):
+            with st.spinner("Generating ideas…"):
                 try:
-                    st.session_state["ideas"] = generate_ideas(ctx, api_key)
+                    st.session_state["ideas"] = generate_ideas(ctx, **_ai_kwargs)
                     st.session_state["selected_idea"] = None
-                    # Clear downstream state
                     for key in ("feasibility", "plan", "pitch", "readme"):
                         st.session_state.pop(key, None)
-                except Exception as e:
-                    st.error(f"Generation failed: {e}")
-                    st.stop()
+                except (ConfigurationError, RuntimeError) as e:
+                    _handle_config_error(e)
 
         ideas: list[ProjectIdea] = st.session_state.get("ideas", [])
         if ideas:
@@ -102,21 +187,15 @@ with tabs[1]:
     else:
         st.markdown(f"**Analyzing:** {selected_f2.title}")
         if st.button("Run Feasibility Check", type="primary", key="run_feasibility"):
-            try:
-                api_key_f2: str = st.secrets["GEMINI_API_KEY"]
-            except KeyError:
-                st.error("GEMINI_API_KEY not found in Streamlit secrets.")
-                st.stop()
             with st.spinner("Analyzing feasibility…"):
                 try:
                     st.session_state["feasibility"] = analyze_feasibility(
-                        selected_f2, ctx, api_key_f2
+                        selected_f2, ctx, **_ai_kwargs
                     )
                     for key in ("plan", "pitch", "readme"):
                         st.session_state.pop(key, None)
-                except Exception as e:
-                    st.error(f"Analysis failed: {e}")
-                    st.stop()
+                except (ConfigurationError, RuntimeError) as e:
+                    _handle_config_error(e)
 
         report = st.session_state.get("feasibility")
         if report is not None:
@@ -150,21 +229,15 @@ with tabs[2]:
     else:
         st.markdown(f"**Planning:** {selected_p.title}")
         if st.button("Generate Plan", type="primary", key="gen_plan"):
-            try:
-                api_key_f3: str = st.secrets["GEMINI_API_KEY"]
-            except KeyError:
-                st.error("GEMINI_API_KEY not found in Streamlit secrets.")
-                st.stop()
             with st.spinner("Building execution plan…"):
                 try:
                     st.session_state["plan"] = build_plan(
-                        selected_p, feasibility_p, ctx, api_key_f3
+                        selected_p, feasibility_p, ctx, **_ai_kwargs
                     )
                     for key in ("pitch", "readme"):
                         st.session_state.pop(key, None)
-                except Exception as e:
-                    st.error(f"Planning failed: {e}")
-                    st.stop()
+                except (ConfigurationError, RuntimeError) as e:
+                    _handle_config_error(e)
 
         plan = st.session_state.get("plan")
         if plan is not None:
@@ -201,20 +274,14 @@ with tabs[3]:
     else:
         st.markdown(f"**Pitching:** {selected_p4.title}")
         if st.button("Generate Pitch", type="primary", key="gen_pitch"):
-            try:
-                api_key_f4: str = st.secrets["GEMINI_API_KEY"]
-            except KeyError:
-                st.error("GEMINI_API_KEY not found in Streamlit secrets.")
-                st.stop()
             with st.spinner("Crafting your pitch…"):
                 try:
                     st.session_state["pitch"] = generate_pitch(
-                        selected_p4, plan_p4, api_key_f4
+                        selected_p4, plan_p4, **_ai_kwargs
                     )
                     st.session_state.pop("readme", None)
-                except Exception as e:
-                    st.error(f"Pitch generation failed: {e}")
-                    st.stop()
+                except (ConfigurationError, RuntimeError) as e:
+                    _handle_config_error(e)
 
         pitch = st.session_state.get("pitch")
         if pitch is not None:
@@ -239,19 +306,13 @@ with tabs[4]:
     else:
         st.markdown(f"**Generating README for:** {selected_p5.title}")
         if st.button("Generate README", type="primary", key="gen_readme"):
-            try:
-                api_key_f5: str = st.secrets["GEMINI_API_KEY"]
-            except KeyError:
-                st.error("GEMINI_API_KEY not found in Streamlit secrets.")
-                st.stop()
             with st.spinner("Writing your README…"):
                 try:
                     st.session_state["readme"] = generate_readme(
-                        selected_p5, plan_p5, ctx, api_key_f5
+                        selected_p5, plan_p5, ctx, **_ai_kwargs
                     )
-                except Exception as e:
-                    st.error(f"README generation failed: {e}")
-                    st.stop()
+                except (ConfigurationError, RuntimeError) as e:
+                    _handle_config_error(e)
 
         readme = st.session_state.get("readme")
         if readme is not None:

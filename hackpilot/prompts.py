@@ -1,7 +1,16 @@
-"""Prompt builders for each HackPilot feature."""
+"""Prompt builders for each HackPilot feature.
+
+All builders accept an optional ``language`` argument (default: English).
+The language instruction is prepended to each prompt so that Gemini /
+Ollama responds exclusively in the requested language.
+
+JSON *keys* are always kept in English so that downstream parsing remains
+deterministic; only the human-readable *values* are translated.
+"""
 
 from __future__ import annotations
 
+from hackpilot.language import Language, language_instruction
 from hackpilot.models import (
     ExecutionPlan,
     FeasibilityReport,
@@ -15,9 +24,14 @@ _SYSTEM = (
 )
 
 
-def idea_generator(ctx: HackathonContext) -> str:
+def _header(lang: Language) -> str:
+    """Combine the system instruction with the language enforcement block."""
+    return f"{_SYSTEM}\n\n{language_instruction(lang)}"
+
+
+def idea_generator(ctx: HackathonContext, language: Language = Language.ENGLISH) -> str:
     tech = ", ".join(ctx.preferred_tech) if ctx.preferred_tech else "any"
-    return f"""{_SYSTEM}
+    return f"""{_header(language)}
 
 Generate exactly 5 hackathon project ideas for the following context:
 - Theme: {ctx.theme}
@@ -36,8 +50,12 @@ Calibrate difficulty for a {ctx.team_size}-person team with {ctx.duration_hours}
 """
 
 
-def feasibility_analyzer(idea: ProjectIdea, ctx: HackathonContext) -> str:
-    return f"""{_SYSTEM}
+def feasibility_analyzer(
+    idea: ProjectIdea,
+    ctx: HackathonContext,
+    language: Language = Language.ENGLISH,
+) -> str:
+    return f"""{_header(language)}
 
 Assess the feasibility of the following hackathon project:
 - Title: {idea.title}
@@ -58,8 +76,9 @@ def execution_planner(
     idea: ProjectIdea,
     feasibility: FeasibilityReport,
     ctx: HackathonContext,
+    language: Language = Language.ENGLISH,
 ) -> str:
-    return f"""{_SYSTEM}
+    return f"""{_header(language)}
 
 Create an execution plan for this hackathon project:
 - Title: {idea.title}
@@ -78,9 +97,13 @@ Return a single JSON object with these exact keys:
 """
 
 
-def elevator_pitch(idea: ProjectIdea, plan: ExecutionPlan) -> str:
+def elevator_pitch(
+    idea: ProjectIdea,
+    plan: ExecutionPlan,
+    language: Language = Language.ENGLISH,
+) -> str:
     mvp = "; ".join(plan.mvp_scope[:3])
-    return f"""{_SYSTEM}
+    return f"""{_header(language)}
 
 Write an elevator pitch for this hackathon project:
 - Title: {idea.title}
@@ -95,12 +118,15 @@ Return a single JSON object with these exact keys:
 
 
 def readme_generator(
-    idea: ProjectIdea, plan: ExecutionPlan, ctx: HackathonContext
+    idea: ProjectIdea,
+    plan: ExecutionPlan,
+    ctx: HackathonContext,
+    language: Language = Language.ENGLISH,
 ) -> str:
     tech = ", ".join(ctx.preferred_tech) if ctx.preferred_tech else "TBD"
     mvp = "\n".join(f"- {f}" for f in plan.mvp_scope)
     stretch = "\n".join(f"- {f}" for f in plan.stretch_goals)
-    return f"""{_SYSTEM}
+    return f"""{_header(language)}
 
 Generate a GitHub README in Markdown for this hackathon project:
 - Title: {idea.title}
