@@ -140,7 +140,13 @@ with tabs[0]:
         if st.button("Generate Ideas", type="primary", key="gen_ideas"):
             with st.spinner("Generating ideas…"):
                 try:
-                    st.session_state["ideas"] = generate_ideas(ctx, **_ai_kwargs)
+                    st.session_state["ideas"] = generate_ideas(
+                                                                    ctx,
+                                                                    api_key=gemini_api_key,
+                                                                    provider=provider,
+                                                                    ollama_model=ollama_model,
+                                                                    language=language,
+                                                                )
                     st.session_state["selected_idea"] = None
                     for key in ("feasibility", "plan", "pitch", "readme"):
                         st.session_state.pop(key, None)
