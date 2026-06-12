@@ -31,7 +31,7 @@ def build_plan(
     raw: dict[str, Any] = ai_provider.call(
         prompt,
         provider=provider,
-        gemini_api_key=api_key,
+        grok_api_key=api_key,
         ollama_model=ollama_model,
         temperature=0.3,
     )

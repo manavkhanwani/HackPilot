@@ -1,12 +1,12 @@
 """Unified AI provider layer for HackPilot.
 
 Supports:
-  - Gemini (cloud) via google-genai SDK
+  - Grok (cloud) via xAI API (OpenAI-compatible) at https://api.x.ai/v1
   - Ollama (local) via its REST API at http://localhost:11434
 
-Resolution order for the Gemini API key:
+Resolution order for the Grok API key:
   1. Caller-supplied ``api_key`` argument (BYOK / sidebar input)
-  2. ``st.secrets["GEMINI_API_KEY"]``  (Streamlit Cloud secrets)
+  2. ``st.secrets["GROK_API_KEY"]``  (Streamlit Cloud secrets)
   3. Raises ``ConfigurationError``
 """
 
@@ -21,7 +21,7 @@ import requests
 
 
 class Provider(str, Enum):
-    GEMINI = "Gemini (Cloud)"
+    GROK = "Grok (xAI Cloud)"
     OLLAMA = "Ollama (Local)"
 
 
@@ -36,9 +36,11 @@ OLLAMA_DEFAULT_MODELS: list[str] = [
 ]
 
 _OLLAMA_BASE_URL = "http://localhost:11434"
+_GROK_BASE_URL = "https://api.x.ai/v1"
+_GROK_MODEL = "grok-3"
 
 
-# ── helpers ──────────────────────────────────────────────────────────────────
+# ── helpers ───────────────────────────────────────────────────────────────────
 
 
 def _extract_json(text: str) -> str:
@@ -58,54 +60,63 @@ def _parse_json(text: str) -> Any:
         ) from exc
 
 
-# ── Gemini ────────────────────────────────────────────────────────────────────
+# ── Grok ──────────────────────────────────────────────────────────────────────
 
 
-def _resolve_gemini_key(user_key: str | None) -> str:
-    """Return a Gemini API key, preferring the user-supplied one."""
+def _resolve_grok_key(user_key: str | None) -> str:
+    """Return a Grok API key, preferring the user-supplied one."""
     if user_key and user_key.strip():
         return user_key.strip()
 
-    # Lazy import: Streamlit is not available in tests unless mocked.
     try:
         import streamlit as st  # type: ignore[import-untyped]
 
-        key = st.secrets.get("GEMINI_API_KEY", "")
+        key = st.secrets.get("GROK_API_KEY", "")
         if key:
             return str(key)
-    except Exception:  # pragma: no cover — non-Streamlit environments
+    except Exception:  # pragma: no cover
         pass
 
     raise ConfigurationError(
-        "No Gemini API key found. "
-        "Enter one in the sidebar or add GEMINI_API_KEY to Streamlit secrets."
+        "No Grok API key found. "
+        "Enter one in the sidebar or add GROK_API_KEY to Streamlit secrets. "
+        "Get your key at https://console.x.ai/"
     )
 
 
-def _call_gemini(
+def _call_grok(
     api_key: str,
     prompt: str,
     temperature: float,
 ) -> Any:
-    """Call Gemini 2.5 Flash and return parsed JSON."""
-    from google import genai  # type: ignore[import-untyped]
-    from google.genai import types  # type: ignore[import-untyped]
+    """Call Grok via xAI's OpenAI-compatible chat completions endpoint."""
+    url = f"{_GROK_BASE_URL}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": _GROK_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": temperature,
+    }
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=120)
+        resp.raise_for_status()
+    except requests.exceptions.ConnectionError as exc:
+        raise RuntimeError(
+            f"Cannot reach xAI API at {_GROK_BASE_URL}. Check your internet connection."
+        ) from exc
+    except requests.exceptions.HTTPError as exc:
+        status = resp.status_code
+        if status == 401:
+            raise ConfigurationError(
+                "Invalid Grok API key. Check your key at https://console.x.ai/"
+            ) from exc
+        raise RuntimeError(f"Grok API returned HTTP {status}: {resp.text[:200]}") from exc
 
-    client = genai.Client(api_key=api_key)
-    config = types.GenerateContentConfig(temperature=temperature)
-
-    for attempt in range(2):
-        response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt,
-    )
-        text: str = response.text or ""
-        try:
-            return _parse_json(text)
-        except RuntimeError:
-            if attempt == 1:
-                raise
-    raise RuntimeError("Unreachable")  # pragma: no cover
+    text: str = resp.json()["choices"][0]["message"]["content"]
+    return _parse_json(text)
 
 
 # ── Ollama ────────────────────────────────────────────────────────────────────
@@ -147,33 +158,17 @@ def _call_ollama(
 def call(
     prompt: str,
     *,
-    provider: Provider = Provider.GEMINI,
-    gemini_api_key: str | None = None,
+    provider: Provider = Provider.GROK,
+    gemini_api_key: str | None = None,  # kept for backward compat, unused
+    grok_api_key: str | None = None,
     ollama_model: str = OLLAMA_DEFAULT_MODELS[0],
     ollama_base_url: str = _OLLAMA_BASE_URL,
     temperature: float = 0.7,
 ) -> Any:
-    """Dispatch a prompt to the selected AI provider and return parsed JSON.
-
-    Args:
-        prompt: Full prompt string (system + user combined).
-        provider: Which backend to use.
-        gemini_api_key: Optional user-supplied Gemini key (BYOK).
-            Falls back to ``st.secrets["GEMINI_API_KEY"]`` if omitted.
-        ollama_model: Ollama model tag (used only when provider=OLLAMA).
-        ollama_base_url: Ollama server URL (default ``http://localhost:11434``).
-        temperature: Sampling temperature forwarded to the model.
-
-    Returns:
-        Parsed JSON value (dict or list).
-
-    Raises:
-        ConfigurationError: When the Gemini key cannot be resolved.
-        RuntimeError: On API / network / JSON-parse failures.
-    """
-    if provider is Provider.GEMINI:
-        key = _resolve_gemini_key(gemini_api_key)
-        return _call_gemini(key, prompt, temperature)
+    """Dispatch a prompt to the selected AI provider and return parsed JSON."""
+    if provider is Provider.GROK:
+        key = _resolve_grok_key(grok_api_key)
+        return _call_grok(key, prompt, temperature)
 
     if provider is Provider.OLLAMA:
         return _call_ollama(ollama_model, prompt, temperature, ollama_base_url)

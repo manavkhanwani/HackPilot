@@ -51,26 +51,27 @@ with st.sidebar:
         "Provider",
         provider_options,
         index=0,
-        help="Gemini uses Google Cloud; Ollama runs models locally.",
+        help="Grok uses xAI Cloud; Ollama runs models locally.",
     )
     provider = Provider(selected_provider_str)
 
-    gemini_api_key: str = ""
+    grok_api_key: str = ""
     ollama_model: str = OLLAMA_DEFAULT_MODELS[0]
 
-    if provider is Provider.GEMINI:
+    if provider is Provider.GROK:
         # ── BYOK: Bring Your Own Key ───────────────────────────────────────
         byok = st.text_input(
-            "Gemini API Key (optional)",
+            "Grok API Key (optional)",
             type="password",
             placeholder="Leave blank to use secrets",
             help=(
-                "Paste your own Gemini key here. "
-                "If blank, the key from Streamlit secrets is used. "
+                "Paste your xAI Grok key here. "
+                "Get one at https://console.x.ai/ "
+                "If blank, GROK_API_KEY from Streamlit secrets is used. "
                 "Your key is never logged or stored."
             ),
         )
-        gemini_api_key = byok  # may be empty string; resolution happens in ai_provider
+        grok_api_key = byok  # may be empty string; resolution happens in ai_provider
 
     else:  # Ollama
         available_models = OLLAMA_DEFAULT_MODELS.copy()
@@ -116,7 +117,7 @@ with st.sidebar:
 # ── Shared kwargs forwarded to every feature call ─────────────────────────────
 _ai_kwargs: dict = dict(
     provider=provider,
-    gemini_api_key=gemini_api_key,
+    grok_api_key=grok_api_key,
     ollama_model=ollama_model,
     language=language,
 )
@@ -126,10 +127,10 @@ def _handle_config_error(exc: Exception) -> None:
     """Display a friendly error for configuration issues and stop execution."""
     if isinstance(exc, ConfigurationError):
         st.error(str(exc))
-        if provider is Provider.GEMINI:
+        if provider is Provider.GROK:
             st.info(
-                "💡 Add `GEMINI_API_KEY` to your Streamlit secrets, "
-                "or enter a key in the sidebar."
+                "💡 Add `GROK_API_KEY` to your Streamlit secrets, "
+                "or enter a key in the sidebar (get one at https://console.x.ai/)."
             )
     else:
         st.error(f"Unexpected error: {exc}")
@@ -151,7 +152,7 @@ with tabs[0]:
                 try:
                     st.session_state["ideas"] = generate_ideas(
                                                                     ctx,
-                                                                    api_key=gemini_api_key,
+                                                                    grok_api_key=grok_api_key,
                                                                     provider=provider,
                                                                     ollama_model=ollama_model,
                                                                     language=language,
