@@ -159,7 +159,7 @@ def call(
     prompt: str,
     *,
     provider: Provider = Provider.GROK,
-    gemini_api_key: str | None = None,  # kept for backward compat, unused
+    GROK_api_key: str | None = None,  # kept for backward compat, unused
     grok_api_key: str | None = None,
     ollama_model: str = OLLAMA_DEFAULT_MODELS[0],
     ollama_base_url: str = _OLLAMA_BASE_URL,

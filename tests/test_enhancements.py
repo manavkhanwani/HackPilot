@@ -15,7 +15,7 @@ from hackpilot.ai_provider import (
     ConfigurationError,
     Provider,
     _call_ollama,
-    _resolve_gemini_key,
+    _resolve_GROK_key,
     call,
 )
 from hackpilot.language import (
@@ -140,7 +140,7 @@ class TestPromptLanguageInjection:
 
 class TestProviderEnum:
     def test_both_providers_exist(self) -> None:
-        assert Provider.GEMINI in Provider
+        assert Provider.GROK in Provider
         assert Provider.OLLAMA in Provider
 
     def test_ollama_default_models_non_empty(self) -> None:
@@ -151,18 +151,18 @@ class TestProviderEnum:
         assert "mistral" in OLLAMA_DEFAULT_MODELS
 
 
-class TestCallDispatchesToGemini:
-    def test_gemini_path_called(self) -> None:
+class TestCallDispatchesToGROK:
+    def test_GROK_path_called(self) -> None:
         with (
-            patch("hackpilot.ai_provider._resolve_gemini_key", return_value="key"),
+            patch("hackpilot.ai_provider._resolve_GROK_key", return_value="key"),
             patch(
-                "hackpilot.ai_provider._call_gemini",
+                "hackpilot.ai_provider._call_GROK",
                 return_value={"ok": True},
-            ) as mock_gemini,
+            ) as mock_GROK,
         ):
-            result = call("prompt", provider=Provider.GEMINI, gemini_api_key="key")
+            result = call("prompt", provider=Provider.GROK, GROK_api_key="key")
 
-        mock_gemini.assert_called_once()
+        mock_GROK.assert_called_once()
         assert result == {"ok": True}
 
     def test_ollama_path_called(self) -> None:
@@ -216,9 +216,9 @@ class TestCallDispatchesToGemini:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class TestResolveGeminiKey:
+class TestResolveGROKKey:
     def test_user_supplied_key_takes_priority(self) -> None:
-        key = _resolve_gemini_key("user-supplied-key")
+        key = _resolve_GROK_key("user-supplied-key")
         assert key == "user-supplied-key"
 
     def test_whitespace_only_key_is_ignored(self) -> None:
@@ -227,7 +227,7 @@ class TestResolveGeminiKey:
         mock_st.secrets.get.return_value = "secret-key"
 
         with patch.dict("sys.modules", {"streamlit": mock_st}):
-            key = _resolve_gemini_key("   ")
+            key = _resolve_GROK_key("   ")
 
         assert key == "secret-key"
 
@@ -236,7 +236,7 @@ class TestResolveGeminiKey:
         mock_st.secrets.get.return_value = "from-secrets"
 
         with patch.dict("sys.modules", {"streamlit": mock_st}):
-            key = _resolve_gemini_key("")
+            key = _resolve_GROK_key("")
 
         assert key == "from-secrets"
 
@@ -245,7 +245,7 @@ class TestResolveGeminiKey:
         mock_st.secrets.get.return_value = "from-secrets"
 
         with patch.dict("sys.modules", {"streamlit": mock_st}):
-            key = _resolve_gemini_key(None)
+            key = _resolve_GROK_key(None)
 
         assert key == "from-secrets"
 
@@ -254,17 +254,17 @@ class TestResolveGeminiKey:
         mock_st.secrets.get.return_value = ""
 
         with patch.dict("sys.modules", {"streamlit": mock_st}):
-            with pytest.raises(ConfigurationError, match="No Gemini API key"):
-                _resolve_gemini_key("")
+            with pytest.raises(ConfigurationError, match="No GROK API key"):
+                _resolve_GROK_key("")
 
     def test_streamlit_import_error_raises_configuration_error(self) -> None:
         """When Streamlit is unavailable (e.g. CLI context), raise ConfigurationError."""
         with patch.dict("sys.modules", {"streamlit": None}):
             with pytest.raises(ConfigurationError):
-                _resolve_gemini_key(None)
+                _resolve_GROK_key(None)
 
     def test_key_stripped_of_whitespace(self) -> None:
-        key = _resolve_gemini_key("  my-key  ")
+        key = _resolve_GROK_key("  my-key  ")
         assert key == "my-key"
 
     def test_user_key_never_falls_through_to_secrets(self) -> None:
@@ -273,7 +273,7 @@ class TestResolveGeminiKey:
         mock_st.secrets.get.return_value = "secrets-key"
 
         with patch.dict("sys.modules", {"streamlit": mock_st}):
-            key = _resolve_gemini_key("byok-key")
+            key = _resolve_GROK_key("byok-key")
 
         assert key == "byok-key"
         mock_st.secrets.get.assert_not_called()

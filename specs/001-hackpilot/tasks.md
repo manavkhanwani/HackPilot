@@ -27,7 +27,7 @@
 
 ## Phase 3 – Idea Generator (F1)
 - [x] Implement `hackpilot/models.py`
-- [x] Implement `hackpilot/gemini.py`
+- [x] Implement `hackpilot/GROK.py`
 - [x] Implement `hackpilot/prompts.py` (F1 prompt)
 - [x] Implement `hackpilot/features/idea_generator.py`
 - [x] Add sidebar context inputs to `app.py`
@@ -82,7 +82,7 @@
 ## Phase 8 – Local AI Inference / Ollama (F7)
 - [x] Create `hackpilot/ai_provider.py` (`Provider` enum, `call()` dispatcher)
 - [x] Implement `_call_ollama()` using `requests` + Ollama REST API
-- [x] Implement `_call_gemini()` (extracted from old `gemini.py`)
+- [x] Implement `_call_GROK()` (extracted from old `GROK.py`)
 - [x] Update all 5 feature modules to call `ai_provider.call()`
 - [x] Add provider + model selectors to `app.py` sidebar
 - [x] Add `requests>=2.31.0` to `requirements.txt`
@@ -90,11 +90,11 @@
 - [x] Update `specs/001-hackpilot/spec.md` (F7)
 - [x] Update `README.md` (Ollama section)
 
-## Phase 9 – BYOK / Gemini API Key (F8)
-- [x] Implement `_resolve_gemini_key()` with 3-level resolution in `ai_provider.py`
+## Phase 9 – BYOK / GROK API Key (F8)
+- [x] Implement `_resolve_GROK_key()` with 3-level resolution in `ai_provider.py`
 - [x] Add `ConfigurationError` class
 - [x] Add password field to `app.py` sidebar
-- [x] Replace all `st.secrets["GEMINI_API_KEY"]` reads in `app.py` with `_ai_kwargs`
+- [x] Replace all `st.secrets["GROK_API_KEY"]` reads in `app.py` with `_ai_kwargs`
 - [x] Add `_handle_config_error()` helper in `app.py`
 - [x] Write BYOK key-resolution tests in `tests/test_enhancements.py`
 - [x] Update `specs/001-hackpilot/spec.md` (F8)

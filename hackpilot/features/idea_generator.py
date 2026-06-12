@@ -14,7 +14,7 @@ def generate_ideas(
     ctx: HackathonContext,
     api_key: str,
     *,
-    provider: Provider = Provider.GEMINI,
+    provider: Provider = Provider.GROK,
     ollama_model: str = ai_provider.OLLAMA_DEFAULT_MODELS[0],
     language: Language = Language.ENGLISH,
 ) -> list[ProjectIdea]:

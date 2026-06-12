@@ -1,7 +1,7 @@
 """Prompt builders for each HackPilot feature.
 
 All builders accept an optional ``language`` argument (default: English).
-The language instruction is prepended to each prompt so that Gemini /
+The language instruction is prepended to each prompt so that GROK /
 Ollama responds exclusively in the requested language.
 
 JSON *keys* are always kept in English so that downstream parsing remains

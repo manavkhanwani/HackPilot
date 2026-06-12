@@ -5,7 +5,7 @@ Supported languages and their BCP-47 tags:
   - Hindi  (hi)  हिन्दी
   - Marathi (mr) मराठी
 
-Gemini's multilingual capabilities are used directly — no external
+GROK's multilingual capabilities are used directly — no external
 translation APIs are required.  Each prompt is prefixed with an explicit
 language instruction so the model responds exclusively in the chosen
 language.
