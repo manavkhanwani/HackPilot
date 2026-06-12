@@ -96,10 +96,9 @@ def _call_gemini(
 
     for attempt in range(2):
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=config,
-        )
+        model="gemini-2.0-flash",
+        contents=prompt,
+    )
         text: str = response.text or ""
         try:
             return _parse_json(text)
