@@ -14,6 +14,15 @@ from hackpilot.features.idea_generator import generate_ideas
 from hackpilot.features.pitch import generate_pitch
 from hackpilot.features.planner import build_plan
 from hackpilot.features.readme_gen import generate_readme
+from hackpilot.features.reviews import (
+    CATEGORIES,
+    STAR_LABELS,
+    Review,
+    average_rating,
+    load_reviews,
+    save_review,
+    stars,
+)
 from hackpilot.language import LANGUAGE_OPTIONS, Language
 from hackpilot.models import HackathonContext, ProjectIdea
 
@@ -128,7 +137,7 @@ def _handle_config_error(exc: Exception) -> None:
 
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tabs = st.tabs(["💡 Ideas", "🔍 Feasibility", "🗓 Plan", "🎤 Pitch", "📄 README"])
+tabs = st.tabs(["💡 Ideas", "🔍 Feasibility", "🗓 Plan", "🎤 Pitch", "📄 README", "⭐ Reviews"])
 
 # ── Tab 1 – Idea Generator ────────────────────────────────────────────────────
 with tabs[0]:
@@ -327,3 +336,113 @@ with tabs[4]:
                 st.markdown(readme.markdown)
             st.code(readme.markdown, language="markdown")
             st.caption("Copy the block above and paste into your repo's README.md.")
+
+# ── Tab 6 – Reviews ───────────────────────────────────────────────────────────
+with tabs[5]:
+    st.subheader("⭐ Reviews")
+    st.caption("Share your experience with HackPilot and read what others think.")
+
+    # ── Load reviews ──────────────────────────────────────────────────────────
+    if "reviews_cache" not in st.session_state:
+        st.session_state["reviews_cache"] = load_reviews()
+
+    all_reviews = st.session_state["reviews_cache"]
+
+    # ── Summary metrics ───────────────────────────────────────────────────────
+    if all_reviews:
+        avg = average_rating(all_reviews)
+        col_a, col_b, col_c = st.columns(3)
+        col_a.metric("Average Rating", f"{avg:.1f} / 5.0")
+        col_b.metric("Total Reviews", len(all_reviews))
+        col_c.metric("Rating", stars(avg))
+        st.divider()
+
+    # ── Submit a review ───────────────────────────────────────────────────────
+    with st.expander("✍️ Write a Review", expanded=not bool(all_reviews)):
+        with st.form("review_form", clear_on_submit=True):
+            reviewer_name = st.text_input(
+                "Your name",
+                placeholder="Anonymous",
+                help="Leave blank to post anonymously.",
+            )
+            category = st.selectbox("Feature you're reviewing", CATEGORIES)
+            rating = st.select_slider(
+                "Rating",
+                options=list(STAR_LABELS.keys()),
+                value=5,
+                format_func=lambda x: STAR_LABELS[x],
+            )
+            review_title = st.text_input(
+                "Review title",
+                placeholder="e.g. Really helped me brainstorm fast!",
+                max_chars=80,
+            )
+            review_body = st.text_area(
+                "Your review",
+                placeholder="Tell us what you think…",
+                max_chars=500,
+                height=120,
+            )
+            submitted = st.form_submit_button("Submit Review", type="primary")
+
+            if submitted:
+                if not review_title.strip():
+                    st.error("Please add a short review title.")
+                elif not review_body.strip():
+                    st.error("Please write something in your review.")
+                else:
+                    new_review = Review(
+                        reviewer_name=reviewer_name.strip() or "Anonymous",
+                        category=category,
+                        rating=rating,
+                        title=review_title.strip(),
+                        body=review_body.strip(),
+                    )
+                    save_review(new_review)
+                    # Refresh cache
+                    st.session_state["reviews_cache"] = load_reviews()
+                    st.success("✅ Thanks for your review!")
+                    st.rerun()
+
+    st.divider()
+
+    # ── Filter & display reviews ──────────────────────────────────────────────
+    all_reviews = st.session_state["reviews_cache"]
+
+    if not all_reviews:
+        st.info("No reviews yet — be the first to leave one above!")
+    else:
+        col_filter, col_sort = st.columns(2)
+        with col_filter:
+            filter_cat = st.selectbox(
+                "Filter by feature",
+                ["All"] + CATEGORIES,
+                key="review_filter_cat",
+            )
+        with col_sort:
+            sort_by = st.selectbox(
+                "Sort by",
+                ["Newest first", "Highest rated", "Lowest rated"],
+                key="review_sort",
+            )
+
+        filtered = all_reviews if filter_cat == "All" else [r for r in all_reviews if r.category == filter_cat]
+
+        if sort_by == "Newest first":
+            filtered = list(reversed(filtered))
+        elif sort_by == "Highest rated":
+            filtered = sorted(filtered, key=lambda r: r.rating, reverse=True)
+        else:
+            filtered = sorted(filtered, key=lambda r: r.rating)
+
+        st.markdown(f"**{len(filtered)} review(s)**")
+
+        for review in filtered:
+            with st.container(border=True):
+                col1, col2 = st.columns([5, 2])
+                with col1:
+                    st.markdown(f"**{review.title}**")
+                    st.caption(f"🏷️ {review.category}  •  👤 {review.reviewer_name}  •  🕐 {review.timestamp}")
+                with col2:
+                    st.markdown(f"### {stars(review.rating)}")
+                st.write(review.body)
