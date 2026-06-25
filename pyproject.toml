@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "hackpilot"
+version = "1.0.0"
+description = "AI-powered hackathon copilot – Swehca internship project"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "streamlit>=1.35.0",
+    "google-genai>=1.0.0",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4.0",
+    "black>=24.0.0",
+    "mypy>=1.10.0",
+    "types-requests>=2.31.0",
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "pip-audit>=2.7.0",
+    "bandit>=1.7.0",
+    "build>=1.2.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["hackpilot*"]
+
+# ---------------------------------------------------------------------------
+# Ruff configuration (Pipeline 1)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]  # line length handled by Black
+
+# ---------------------------------------------------------------------------
+# Black configuration (Pipeline 1)
+# ---------------------------------------------------------------------------
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+# ---------------------------------------------------------------------------
+# MyPy configuration (Pipeline 2)
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+pretty = true
+
+# ---------------------------------------------------------------------------
+# pytest + coverage configuration (Pipeline 3)
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["hackpilot"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 60   # minimum 60 % coverage required
+
+# ---------------------------------------------------------------------------
+# Bandit configuration (Pipeline 4)
+# ---------------------------------------------------------------------------
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]  # assert usage is fine in tests

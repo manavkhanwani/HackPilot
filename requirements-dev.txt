@@ -1,0 +1,21 @@
+# HackPilot – development / CI dependencies
+# Installed alongside requirements.txt in every CI job.
+
+# --- Linting (Pipeline 1) ---
+ruff>=0.4.0
+black>=24.0.0
+
+# --- Type checking (Pipeline 2) ---
+mypy>=1.10.0
+types-requests>=2.31.0
+
+# --- Testing (Pipeline 3) ---
+pytest>=8.0.0
+pytest-cov>=5.0.0
+
+# --- Security (Pipeline 4) ---
+pip-audit>=2.7.0
+bandit>=1.7.0
+
+# --- Build (Pipeline 5) ---
+build>=1.2.0

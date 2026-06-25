@@ -1,0 +1,253 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║        HackPilot – GitLab CI/CD  (5 Pipelines)                             ║
+# ╠══════════════════════════════════════════════════════════════════════════════╣
+# ║  Pipeline 1 – lint          : Ruff + Black (format check)                  ║
+# ║  Pipeline 2 – typecheck     : MyPy static type checking                    ║
+# ║  Pipeline 3 – test          : pytest (unit + gate tests)                   ║
+# ║  Pipeline 4 – security      : pip-audit + bandit SAST scan                 ║
+# ║  Pipeline 5 – build-package : sdist wheel + artifact upload                ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+# ---------------------------------------------------------------------------
+# Global defaults
+# ---------------------------------------------------------------------------
+default:
+  image: python:3.11-slim
+  before_script:
+    - pip install --quiet --upgrade pip
+    - pip install --quiet -r requirements.txt -r requirements-dev.txt
+
+# ---------------------------------------------------------------------------
+# Stages – execution order across all 5 pipelines
+# ---------------------------------------------------------------------------
+stages:
+  - lint        # Pipeline 1
+  - typecheck   # Pipeline 2
+  - test        # Pipeline 3
+  - security    # Pipeline 4
+  - build       # Pipeline 5
+
+# ---------------------------------------------------------------------------
+# Cache – share the venv across jobs on the same runner
+# ---------------------------------------------------------------------------
+cache:
+  key: "$CI_COMMIT_REF_SLUG-pip"
+  paths:
+    - .pip-cache/
+  policy: pull-push
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+
+# ===========================================================================
+# PIPELINE 1 – LINT  (Ruff + Black)
+# ===========================================================================
+#
+#  Jobs:
+#    ruff-lint   → fast linter / auto-fixer check (no auto-fix in CI)
+#    black-check → enforce Black formatting (--check mode, no writes)
+#
+# ---------------------------------------------------------------------------
+
+ruff-lint:
+  stage: lint
+  script:
+    - pip install --quiet ruff
+    - echo "▶ Running Ruff linter..."
+    - ruff check hackpilot/ tests/ app.py --output-format=gitlab
+  allow_failure: false
+  artifacts:
+    reports:
+      codequality: gl-code-quality-report.json
+    when: always
+    expire_in: 7 days
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+
+black-check:
+  stage: lint
+  script:
+    - pip install --quiet black
+    - echo "▶ Checking Black formatting..."
+    - black --check --diff hackpilot/ tests/ app.py
+  allow_failure: false
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+
+# ===========================================================================
+# PIPELINE 2 – TYPE CHECK  (MyPy)
+# ===========================================================================
+#
+#  Jobs:
+#    mypy-strict → full strict type analysis on the hackpilot package
+#
+# ---------------------------------------------------------------------------
+
+mypy-strict:
+  stage: typecheck
+  script:
+    - pip install --quiet mypy types-requests
+    - echo "▶ Running MyPy type checker..."
+    - |
+      mypy hackpilot/ \
+        --ignore-missing-imports \
+        --strict \
+        --no-error-summary \
+        --pretty
+  allow_failure: false
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+
+# ===========================================================================
+# PIPELINE 3 – TEST  (pytest)
+# ===========================================================================
+#
+#  Jobs:
+#    pytest-unit       → all unit / gate tests with coverage report
+#    pytest-gate-only  → fast smoke run of gate-only tests (parallel job)
+#
+# ---------------------------------------------------------------------------
+
+pytest-unit:
+  stage: test
+  script:
+    - pip install --quiet pytest pytest-cov
+    - echo "▶ Running full pytest suite..."
+    - |
+      pytest tests/ \
+        --tb=short \
+        --cov=hackpilot \
+        --cov-report=term-missing \
+        --cov-report=xml:coverage.xml \
+        --junitxml=report.xml \
+        -v
+  coverage: '/TOTAL.*\s+(\d+%)$/'
+  artifacts:
+    reports:
+      junit: report.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    paths:
+      - coverage.xml
+      - report.xml
+    expire_in: 14 days
+    when: always
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+
+pytest-gate-only:
+  stage: test
+  script:
+    - pip install --quiet pytest
+    - echo "▶ Running gate-specific tests only..."
+    - pytest tests/test_pipeline_gates.py -v --tb=short
+  needs: []   # run in parallel with pytest-unit, no dependency
+  allow_failure: false
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+
+# ===========================================================================
+# PIPELINE 4 – SECURITY  (pip-audit + bandit)
+# ===========================================================================
+#
+#  Jobs:
+#    pip-audit-scan  → checks all dependencies for known CVEs
+#    bandit-sast     → static security analysis of Python source
+#
+# ---------------------------------------------------------------------------
+
+pip-audit-scan:
+  stage: security
+  script:
+    - pip install --quiet pip-audit
+    - echo "▶ Running pip-audit dependency vulnerability scan..."
+    - pip-audit --requirement requirements.txt --format=json --output=pip-audit-report.json || true
+    - pip-audit --requirement requirements.txt
+  artifacts:
+    paths:
+      - pip-audit-report.json
+    expire_in: 30 days
+    when: always
+  allow_failure: true   # advisory — known upstream issues shouldn't block ship
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+bandit-sast:
+  stage: security
+  script:
+    - pip install --quiet bandit
+    - echo "▶ Running Bandit SAST scan..."
+    - |
+      bandit -r hackpilot/ app.py \
+        --format json \
+        --output bandit-report.json \
+        --severity-level medium \
+        --confidence-level medium \
+        -ll || true
+    - bandit -r hackpilot/ app.py --severity-level medium --confidence-level medium -ll
+  artifacts:
+    paths:
+      - bandit-report.json
+    expire_in: 30 days
+    when: always
+  allow_failure: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+# ===========================================================================
+# PIPELINE 5 – BUILD & PACKAGE  (wheel + sdist)
+# ===========================================================================
+#
+#  Jobs:
+#    build-wheel   → builds the distributable Python wheel + sdist
+#    verify-wheel  → installs the built wheel in a clean venv and smoke-tests
+#
+# ---------------------------------------------------------------------------
+
+build-wheel:
+  stage: build
+  script:
+    - pip install --quiet build
+    - echo "▶ Building Python wheel and source distribution..."
+    - python -m build --outdir dist/
+    - echo "▶ Build artifacts:"
+    - ls -lh dist/
+  artifacts:
+    paths:
+      - dist/
+    name: "hackpilot-$CI_COMMIT_SHORT_SHA"
+    expire_in: 30 days
+    when: on_success
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+verify-wheel:
+  stage: build
+  needs:
+    - build-wheel
+  before_script:
+    - pip install --quiet --upgrade pip
+  script:
+    - echo "▶ Verifying wheel installs cleanly in isolated environment..."
+    - pip install dist/*.whl --quiet
+    - echo "▶ Smoke-testing installed package..."
+    - python -c "import hackpilot; print('hackpilot package imported successfully')"
+    - python -c "from hackpilot.pipeline import run_pipeline, PipelineResult; print('Pipeline module OK')"
+    - python -c "from hackpilot.models import HackathonContext, ProjectIdea; print('Models module OK')"
+    - python -c "from hackpilot.ai_provider import Provider, call; print('AI provider module OK')"
+    - echo "✅ All smoke tests passed."
+  allow_failure: false
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
